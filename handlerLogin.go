@@ -10,8 +10,6 @@ func handlerLogin(state *State, cmd Command) error {
 		return fmt.Errorf("username required")
 	}
 
-	fmt.Println("Logging in...")
-
 	contextBackground := context.Background()
 	name := cmd.args[0]
 
@@ -19,6 +17,8 @@ func handlerLogin(state *State, cmd Command) error {
 	if err != nil {
 		return fmt.Errorf("user %q is not registerd", name)
 	}
+
+	fmt.Println("Logging in...")
 
 	err = state.cfg.SetUser(name)
 	if err != nil {

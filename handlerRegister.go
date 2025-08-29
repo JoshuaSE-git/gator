@@ -17,28 +17,26 @@ func handlerRegister(state *State, cmd Command) error {
 	id := uuid.New()
 	currentTime := time.Now()
 	name := cmd.args[0]
-	context := context.Background()
-
 	params := database.CreateUserParams{
 		ID:        id,
 		CreatedAt: currentTime,
 		UpdatedAt: currentTime,
 		Name:      name,
 	}
+	contextBackground := context.Background()
 
-	_, err := state.db.GetUser(context, name)
+	user, err := state.db.GetUser(contextBackground, name)
 	if err == nil {
-		return fmt.Errorf("user %q already exists", name)
+		return fmt.Errorf("user %q already exists", user.Name)
 	}
 
-	_, err = state.db.CreateUser(context, params)
+	user, err = state.db.CreateUser(contextBackground, params)
 	if err != nil {
 		return err
 	}
 
-	state.cfg.SetUser(name)
-
-	fmt.Printf("%q was successfully registered\n", name)
+	state.cfg.SetUser(user.Name)
+	fmt.Printf("%q was successfully registered\n", user.Name)
 
 	return nil
 }

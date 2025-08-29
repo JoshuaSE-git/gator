@@ -1,10 +1,13 @@
 package main
 
 import (
-	"errors"
+	"database/sql"
 	"fmt"
+	"os"
 
 	"github.com/JoshuaSE-git/gator/internal/config"
+	"github.com/JoshuaSE-git/gator/internal/database"
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -12,43 +15,33 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	cfg.SetUser("Joshua")
 
-	cfg, err = config.Read()
+	db, err := sql.Open("postgres", cfg.DbURL)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("%+v\n", *cfg)
-}
+	dbQueries := database.New(db)
+	state := &State{cfg: cfg, db: dbQueries}
 
-type Command struct {
-	name string
-	args []string
-}
+	commands := &Commands{commandMap: map[string]func(state *State, cmd Command) error{}}
+	commands.register("login", handlerLogin)
+	commands.register("register", handlerRegister)
+	commands.register("reset", handlerReset)
+	commands.register("users", handlerUsers)
 
-type Commands struct {
-	commandMap map[string]func(state *State, cmd Command) error
-}
-
-func (c *Commands) register(name string, handler func(state *State, cmd Command) error) {
-	c.commandMap[name] = handler
-}
-
-func handlerLogin(state *State, cmd Command) error {
-	if len(cmd.args) == 0 {
-		return errors.New("too few arguments")
+	if len(os.Args) < 2 {
+		fmt.Println("too few arguments")
+		os.Exit(1)
 	}
 
-	fmt.Println("Logging in...")
+	commandName := os.Args[1]
+	commandArguments := os.Args[2:]
+	command := Command{name: commandName, args: commandArguments}
 
-	user := cmd.args[0]
-	err := state.Config.SetUser(user)
+	err = commands.run(state, command)
 	if err != nil {
-		return err
+		fmt.Println(err)
+		os.Exit(1)
 	}
-
-	fmt.Printf("%v logged in successfully!\n", user)
-
-	return nil
 }

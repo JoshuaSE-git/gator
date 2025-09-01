@@ -6,9 +6,14 @@ import (
 )
 
 func handlerReset(state *State, cmd Command) error {
-	contextBackground := context.Background()
+	ctx := context.Background()
 
-	err := state.db.Reset(contextBackground)
+	err := state.db.Reset(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = state.db.ResetFeeds(ctx)
 	if err != nil {
 		return err
 	}

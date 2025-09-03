@@ -7,6 +7,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,7 +22,7 @@ VALUES (
   $4,
   $5
 )
-RETURNING id, created_at, updated_at, name, url
+RETURNING id, created_at, updated_at, name, url, last_fetched_at
 `
 
 type CreateFeedParams struct {
@@ -47,12 +48,13 @@ func (q *Queries) CreateFeed(ctx context.Context, arg CreateFeedParams) (Feed, e
 		&i.UpdatedAt,
 		&i.Name,
 		&i.Url,
+		&i.LastFetchedAt,
 	)
 	return i, err
 }
 
 const getFeed = `-- name: GetFeed :one
-SELECT id, created_at, updated_at, name, url FROM feeds
+SELECT id, created_at, updated_at, name, url, last_fetched_at FROM feeds
 WHERE feeds.url = $1
 `
 
@@ -65,12 +67,13 @@ func (q *Queries) GetFeed(ctx context.Context, url string) (Feed, error) {
 		&i.UpdatedAt,
 		&i.Name,
 		&i.Url,
+		&i.LastFetchedAt,
 	)
 	return i, err
 }
 
 const getFeeds = `-- name: GetFeeds :many
-SELECT id, created_at, updated_at, name, url FROM feeds
+SELECT id, created_at, updated_at, name, url, last_fetched_at FROM feeds
 `
 
 func (q *Queries) GetFeeds(ctx context.Context) ([]Feed, error) {
@@ -88,6 +91,7 @@ func (q *Queries) GetFeeds(ctx context.Context) ([]Feed, error) {
 			&i.UpdatedAt,
 			&i.Name,
 			&i.Url,
+			&i.LastFetchedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -100,6 +104,57 @@ func (q *Queries) GetFeeds(ctx context.Context) ([]Feed, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const getNextFeedToFetch = `-- name: GetNextFeedToFetch :many
+SELECT id, created_at, updated_at, name, url, last_fetched_at FROM feeds
+ORDER BY last_fetched_at ASC NULLS FIRST
+`
+
+func (q *Queries) GetNextFeedToFetch(ctx context.Context) ([]Feed, error) {
+	rows, err := q.db.QueryContext(ctx, getNextFeedToFetch)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Feed
+	for rows.Next() {
+		var i Feed
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Name,
+			&i.Url,
+			&i.LastFetchedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markFeedFetched = `-- name: MarkFeedFetched :exec
+UPDATE feeds
+SET last_fetched_at = $2, updated_at = $2
+WHERE id = $1
+`
+
+type MarkFeedFetchedParams struct {
+	ID            uuid.UUID
+	LastFetchedAt sql.NullTime
+}
+
+func (q *Queries) MarkFeedFetched(ctx context.Context, arg MarkFeedFetchedParams) error {
+	_, err := q.db.ExecContext(ctx, markFeedFetched, arg.ID, arg.LastFetchedAt)
+	return err
 }
 
 const resetFeeds = `-- name: ResetFeeds :exec
